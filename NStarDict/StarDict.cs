@@ -1,31 +1,49 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
+
+using PCLStorage;
 
 namespace NStarDict
 {
-    public class StarDict
+    public class StarDict : IDisposable
     {
-        readonly FileStream index;
-        readonly FileStream yaindex;
-        readonly DictZipFile dz;
-        readonly String dictname;
+        private Stream index;
+        private readonly DictZipFile dz;
+        private readonly string dictname;
+        private readonly IFolder _folder;
 
         public StarDict()
             : this("//sdcard/dict")
         {
         }
 
-        public StarDict(String dictname)
+        public StarDict(IFolder folder, String dictname)
         {
+            _folder = folder;
             this.dictname = dictname;
-            index = new FileStream(dictname + ".idx", FileMode.Open, FileAccess.Read);
-            dz = new DictZipFile(dictname + ".dict.dz");
-            yaindex = new FileStream(dictname + ".yaidx", FileMode.Open, FileAccess.Read);
-            //this.dz.runtest();
+            dz = new DictZipFile(folder, dictname + ".dict.dz");
         }
 
-        public String GetWord(int p, Location l)
+        public StarDict(String dictname)
+        {
+            _folder = null;
+            this.dictname = dictname;
+            dz = new DictZipFile(dictname + ".dict.dz");
+        }
+
+        public async Task Init()
+        {
+            var indexFile = _folder == null
+                ? await FileSystem.Current.GetFileFromPathAsync(dictname + ".idx")
+                : await _folder.GetFileAsync(dictname + ".idx");
+
+            index = await indexFile.OpenAsync(FileAccess.Read);
+            await dz.Init();
+        }
+
+        public async Task<string> GetWord(int p, Location l)
         {
             if (l == null)
             {
@@ -37,19 +55,16 @@ namespace NStarDict
             int datasize = 0;
             int offset = 0; // the offset of the p-th word in this.index
 
-            yaindex.Seek(p * 4, SeekOrigin.Begin);
-            int size = yaindex.Read(buffer, 0, 4);
-            if (size != 4)
-            {
-                throw new Exception("Read Index Error");
-            }
             for (int i = 0; i < 4; i++)
             {
                 offset <<= 8;
                 offset |= buffer[i] & 0xff;
             }
+
             index.Seek(offset, SeekOrigin.Begin);
-            size = index.Read(buffer, 0, 1024);
+
+            int size = await index.ReadAsync(buffer, 0, 1024);
+
             for (int i = 0; i < size; i++)
             {
                 if (buffer[i] == 0)
@@ -79,10 +94,10 @@ namespace NStarDict
             return word;
         }
 
-        public String GetExplanation(String word)
+        public async Task<string> GetExplanation(String word)
         {
             int i = 0;
-            int max = GetWordNum();
+            int max = await GetWordNum();
             String w = "";
             var l = new Location();
             //return this.dz.test()+this.dz.last_error;
@@ -90,7 +105,7 @@ namespace NStarDict
             while (i <= max)
             {
                 int mid = (i + max) / 2;
-                w = GetWord(mid, l);
+                w = await GetWord(mid, l);
                 if (string.CompareOrdinal(w, word) > 0)
                 {
                     max = mid - 1;
@@ -108,44 +123,57 @@ namespace NStarDict
             //get explanation
             var buffer = new byte[l.Size];
             dz.Seek(l.Offset);
-            dz.Read(buffer, l.Size);
+            int size = await dz.Read(buffer, l.Size);
 
-            string exp = Encoding.UTF8.GetString(buffer);
+            string exp = Encoding.UTF8.GetString(buffer, 0, size);
             return w + "\n" + exp;
             //return mid+"\n"+l.offset+exp+l.size;
             //*/
         }
 
-        public String GetVersion()
+        public async Task<string> GetVersion()
         {
-            var br = new StreamReader(dictname + ".ifo");
-            String line = br.ReadLine();
-            while (line != null)
+            var file = _folder == null
+                            ? await FileSystem.Current.GetFileFromPathAsync(dictname + ".ifo")
+                            : await _folder.GetFileAsync(dictname + ".ifo");
+            using (var stream = await file.OpenAsync(FileAccess.Read))
             {
-                String[] version = line.Split('=');
-                if (version.Length == 2 && version[0].Equals("version"))
+                var br = new StreamReader(stream);
+                string line = await br.ReadLineAsync();
+
+                while (line != null)
                 {
-                    return version[1];
+                    String[] version = line.Split('=');
+                    if (version.Length == 2 && version[0].Equals("version"))
+                    {
+                        return version[1];
+                    }
+                    line = br.ReadLine();
                 }
-                line = br.ReadLine();
+                return "UNKNOWN VERSION";
             }
-            return "UNKNOWN VERSION";
         }
 
-        public int GetWordNum()
+        public async Task<int> GetWordNum()
         {
-            var br = new StreamReader(dictname + ".ifo");
-            String line = br.ReadLine();
-            while (line != null)
+            var file = _folder == null
+                            ? await FileSystem.Current.GetFileFromPathAsync(dictname + ".ifo")
+                            : await _folder.GetFileAsync(dictname + ".ifo");
+            using (var stream = await file.OpenAsync(FileAccess.Read))
             {
-                String[] version = line.Split('=');
-                if (version.Length == 2 && version[0].Equals("wordcount"))
+                var br = new StreamReader(stream);
+                var line = await br.ReadLineAsync();
+                while (line != null)
                 {
-                    return int.Parse(version[1]);
+                    string[] version = line.Split('=');
+                    if (version.Length == 2 && version[0].Equals("wordcount"))
+                    {
+                        return int.Parse(version[1]);
+                    }
+                    line = await br.ReadLineAsync();
                 }
-                line = br.ReadLine();
+                return 0;
             }
-            return 0;
         }
 
         //public static void main(String[] args)
@@ -158,5 +186,14 @@ namespace NStarDict
         //    //System.out.println(dict.getExplanation(w));
         //    Console.WriteLine(dict.getExplanation("this"));
         //}
+        public void Dispose()
+        {
+            if (index != null)
+            {
+                index.Dispose();
+            }
+
+            dz.Close();
+        }
     }
 }

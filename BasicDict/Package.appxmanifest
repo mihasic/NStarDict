@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/2010/manifest" xmlns:m2="http://schemas.microsoft.com/appx/2013/manifest">
+  <Identity Name="9a3f8bc8-a332-44b9-afd3-3e7810ba00a2" Publisher="CN=mykhailor" Version="1.0.0.0" />
+  <Properties>
+    <DisplayName>BasicDict</DisplayName>
+    <PublisherDisplayName>mihasic</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Prerequisites>
+    <OSMinVersion>6.3.0</OSMinVersion>
+    <OSMaxVersionTested>6.3.0</OSMaxVersionTested>
+  </Prerequisites>
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="BasicDict.App">
+      <m2:VisualElements DisplayName="BasicDict" Square150x150Logo="Assets\Logo.png" Square30x30Logo="Assets\SmallLogo.png" Description="BasicDict" ForegroundText="light" BackgroundColor="#464646">
+        <m2:SplashScreen Image="Assets\SplashScreen.png" />
+      </m2:VisualElements>
+      <Extensions>
+        <Extension Category="windows.cachedFileUpdater" />
+        <Extension Category="windows.fileOpenPicker">
+          <FileOpenPicker>
+            <SupportedFileTypes>
+              <SupportsAnyFileType />
+            </SupportedFileTypes>
+          </FileOpenPicker>
+        </Extension>
+        <Extension Category="windows.autoPlayDevice">
+          <AutoPlayDevice>
+            <LaunchAction Verb="Import" ActionDisplayName="starting" DeviceEvent="Open" />
+          </AutoPlayDevice>
+        </Extension>
+        <Extension Category="windows.fileTypeAssociation">
+          <FileTypeAssociation Name="stardict">
+            <EditFlags OpenIsSafe="true" />
+            <SupportedFileTypes>
+              <FileType>.dz</FileType>
+              <FileType>.idx</FileType>
+              <FileType>.ifo</FileType>
+            </SupportedFileTypes>
+          </FileTypeAssociation>
+        </Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="enterpriseAuthentication" />
+    <Capability Name="removableStorage" />
+  </Capabilities>
+</Package>

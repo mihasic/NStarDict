@@ -2,12 +2,15 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Threading.Tasks;
+
+using PCLStorage;
 
 namespace NStarDict
 {
     public class DictZipFile
     {
-        private readonly FileStream _dictZip;
+        private Stream _dictZip;
 
         //const int FTEXT = 1;
         const int FHCRC = 2;
@@ -23,17 +26,34 @@ namespace NStarDict
         private int _firstPosition;
 
         private readonly List<Chunk> _chunks;
+        private readonly string _fileName;
+        private readonly IFolder _folder;
+
+        public DictZipFile(IFolder folder, String fileName)
+            : this(fileName)
+        {
+            _folder = folder;
+        }
 
         public DictZipFile(String fileName)
         {
-            _dictZip = new FileStream(fileName, FileMode.Open, FileAccess.Read);
+            _fileName = fileName;
             _currentPosition = 0;
             _firstPosition = 0;
             _chunks = new List<Chunk>();
+        }
+
+        public async Task Init()
+        {
+            IFile file = _folder == null
+                ? await FileSystem.Current.GetFileFromPathAsync(_fileName)
+                : await _folder.GetFileAsync(_fileName);
+
+            _dictZip = await file.OpenAsync(FileAccess.Read);
             ReadGzipHeader();
         }
 
-        public int Read(byte[] buff, int size)
+        public async Task<int> Read(byte[] buff, int size)
         {
             if (size <= 0)
             {
@@ -51,8 +71,8 @@ namespace NStarDict
             var byteStream = new MemoryStream();
             for (int i = firstChunk; i <= lastChunk; i++)
             {
-                byte[] chunk = ReadChunk(i);
-                byteStream.Write(chunk, 0, chunk.Length);
+                byte[] chunk = await ReadChunk(i);
+                await byteStream.WriteAsync(chunk, 0, chunk.Length);
             }
             byte[] buf = byteStream.ToArray();
             for (int i = 0; i < size; i++)
@@ -74,7 +94,10 @@ namespace NStarDict
 
         public void Close()
         {
-            _dictZip.Close();
+            if (_dictZip != null)
+            {
+                _dictZip.Dispose();
+            }
         }
 
         private void ReadGzipHeader()
@@ -183,7 +206,7 @@ namespace NStarDict
             }
         }
 
-        private byte[] ReadChunk(int n)
+        private async Task<byte[]> ReadChunk(int n)
         {
             if (n >= _chunks.Count)
             {
@@ -192,15 +215,15 @@ namespace NStarDict
             _dictZip.Seek(_firstPosition + _chunks[n].Offset, SeekOrigin.Begin);
             int size = _chunks[n].Size;
             var buff = new byte[size];
-            _dictZip.Read(buff, 0, size);
+            await _dictZip.ReadAsync(buff, 0, size);
             /* jzlib */
-            var zIn = new DeflateStream(new MemoryStream(buff), CompressionLevel.Optimal, true);
+            var zIn = new GZipStream(new MemoryStream(buff), CompressionLevel.Optimal, true);
             var byteStream = new MemoryStream();
             var buf = new byte[1024];
             int numRead;
-            while ((numRead = zIn.Read(buf, 0, 1024)) != -1)
+            while ((numRead = await zIn.ReadAsync(buf, 0, 1024)) != -1)
             {
-                byteStream.Write(buf, 0, numRead);
+                await byteStream.WriteAsync(buf, 0, numRead);
             }
             return byteStream.ToArray();
         }
